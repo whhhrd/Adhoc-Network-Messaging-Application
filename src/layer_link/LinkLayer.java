@@ -1,8 +1,7 @@
 package layer_link;
 
 import java.nio.ByteBuffer;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.Vector;
 
 import data.Message;
 import data.MessageType;
@@ -23,19 +22,24 @@ public class LinkLayer {
     private NetworkLayer upperLayer;
     private Protocol lowerLayer;
     private boolean mediumFree;
+    private boolean sending;
     private QueueThread queueThread;
     private Client client;
+    private Vector<Message> messages;
     
     public LinkLayer(Client client) { // -- DONE
         this.client = client;
-        this.mediumFree = false;
+        this.mediumFree = true;
+        this.sending = false;
+        messages = new Vector<Message>();
         queueThread = new QueueThread(this);
         queueThread.start();
     }
     
     public synchronized void receiveFromUpperLayer(Packet packet) { // -- DONE
-//        queueThread.putMessageToQueue(turnPacketToMessage(packet));
-        sendToLowerLayer(turnPacketToMessage(packet));
+        try {
+            putMessage(turnPacketToMessage(packet));
+        } catch (InterruptedException e) {}
     }
     
     public void setUpperLayer(NetworkLayer networkLayer) { // -- DONE
@@ -46,15 +50,19 @@ public class LinkLayer {
         this.lowerLayer = protocol;
     }
     
-    public void sendToLowerLayer(Message message) {
+    public synchronized void sendToLowerLayer(Message message) {
         lowerLayer.receiveFromUpperLayer(message);
     }
     
     public void receiveMessage(Message message) { // -- DONE
-        if (message.getType() == MessageType.BUSY || message.getType() == MessageType.SENDING) {
+        if (message.getType() == MessageType.BUSY) {
             this.mediumFree = false;
+        } else if (message.getType() == MessageType.SENDING) {
+            this.sending = true;
         } else if (message.getType() == MessageType.FREE) {
             this.mediumFree = true;
+        } else if (message.getType() == MessageType.DONE_SENDING) {
+            this.sending = false;
         } else if (message.getType() == MessageType.DATA || message.getType() == MessageType.DATA_SHORT) {
             upperLayer.receiveFromLowerLayer(turnMessageToPacket(message));
         }
@@ -62,7 +70,6 @@ public class LinkLayer {
     
     private Packet turnMessageToPacket(Message message) { // -- DONE
         assert message.getType() == MessageType.DATA || message.getType() == MessageType.DATA_SHORT;
-        
         byte[] messageData = message.getData().array();
 
         String bitString = String.format("%8s", Integer.toBinaryString(messageData[0] & 0xFF)).replace(' ', '0') + 
@@ -104,11 +111,12 @@ public class LinkLayer {
                 int dataDesAddress = turnBitStringToNumber(bitString.substring(8,10));
                 int dataUID = turnBitStringToNumber(bitString.substring(3,6));
                 boolean dataIsFin = bitString.charAt(10) == '1';
+                int nextHop = turnBitStringToNumber(bitString.substring(11,13));
                 String textMessage = "";
                 for(int i = 0; i < 14; i++) {
                     textMessage += (char) messageData[2 + i];
                 }
-                return new PacketData(dataSrcAddress,dataDesAddress,dataUID,textMessage,dataIsFin);
+                return new PacketData(dataSrcAddress,dataDesAddress,dataUID,textMessage,dataIsFin,nextHop);
             }
             break;
         case PacketConstant.BITSTRING_RERR: // RRER
@@ -129,11 +137,13 @@ public class LinkLayer {
             int UACKOriginalUID = turnBitStringToNumber(bitString.substring(3,6));
             int UACKOriginalSrcAddress = turnBitStringToNumber(bitString.substring(6,8));
             int UACKSrcAddress = turnBitStringToNumber(bitString.substring(8,10));
-            return new PacketUACK(UACKSrcAddress,UACKOriginalSrcAddress,UACKOriginalUID);
+            int nextNode = turnBitStringToNumber(bitString.substring(10,12));
+            return new PacketUACK(UACKSrcAddress,UACKOriginalSrcAddress,UACKOriginalUID,nextNode);
         case PacketConstant.BITSTRING_MACK: // MACK
             int MACKOriginalUID = turnBitStringToNumber(bitString.substring(3,6));
             int MACKOriginalSrcAddress = turnBitStringToNumber(bitString.substring(6,8));
-            return new PacketMACK(MACKOriginalSrcAddress,MACKOriginalUID);
+            int receiverAddress = turnBitStringToNumber(bitString.substring(8,10));
+            return new PacketMACK(MACKOriginalSrcAddress,MACKOriginalUID,receiverAddress);
         }
         return null;
     }
@@ -156,8 +166,8 @@ public class LinkLayer {
         return null;
     }
     
-    private boolean isMediumFree() { // -- DONE
-        return this.mediumFree;
+    private boolean canSendMessage() { // -- DONE
+        return mediumFree && !sending;
     }
     
     private Message turnPacketDataToMessage(PacketData packet) { // -- DONE
@@ -167,14 +177,15 @@ public class LinkLayer {
         bitString += turnNumberToBitString(packet.getSrcAddress(),2);
         bitString += turnNumberToBitString(packet.getDesAddress(),2);
         bitString += (packet.isFinPacket()) ? "1":"0";
-        bitString += "00000";
+        bitString += turnNumberToBitString(packet.getNextNode(),2);
+        bitString += "000";
         byte[] messageData = new byte[16];
         messageData[0] = (byte) Integer.parseInt(bitString.substring(0, 8), 2);
         messageData[1] = (byte) Integer.parseInt(bitString.substring(8,16), 2);
-        
         for(int i = 0; i < packet.getMessage().length(); i++) {
             messageData[2 + i] = (byte) packet.getMessage().charAt(i);
         }
+        System.out.println("LL - SENDING DATA");
         return new Message(MessageType.DATA,ByteBuffer.wrap(messageData));
     }
     
@@ -192,11 +203,9 @@ public class LinkLayer {
                 bitString += turnNumberToBitString(packet.getSrcAddress(),2);
             }
         }
-
         byte[] messageData = new byte[2];
         messageData[0] = (byte) Integer.parseInt(bitString.substring(0, 8), 2);
         messageData[1] = (byte) Integer.parseInt(bitString.substring(8,16), 2);
-        
         return new Message(MessageType.DATA_SHORT,ByteBuffer.wrap(messageData));
     }
     
@@ -205,8 +214,11 @@ public class LinkLayer {
         bitString += PacketConstant.BITSTRING_MACK;
         bitString += turnNumberToBitString(packet.getOriginalUID(),3);
         bitString += turnNumberToBitString(packet.getOriginalSrcAddress(),2);
+        bitString += turnNumberToBitString(packet.getNextNode(),2);
+        bitString += "000000";
         byte[] messageData = new byte[2];
-        messageData[0] =  Byte.parseByte(bitString.substring(0, 8), 2);
+        messageData[0] = (byte) Integer.parseInt(bitString.substring(0, 8), 2);
+        messageData[1] = (byte) Integer.parseInt(bitString.substring(8,16), 2); 
         return new Message(MessageType.DATA_SHORT,ByteBuffer.wrap(messageData));
     }
     private Message turnPacketRREQToMessage(PacketRREQ packet) { // -- DONE
@@ -223,11 +235,9 @@ public class LinkLayer {
                 bitString += turnNumberToBitString(packet.getSrcAddress(),2);
             }
         }
-        
         byte[] messageData = new byte[2];
         messageData[0] = (byte) Integer.parseInt(bitString.substring(0, 8), 2);
         messageData[1] = (byte) Integer.parseInt(bitString.substring(8,16), 2);
-
         return new Message(MessageType.DATA_SHORT,ByteBuffer.wrap(messageData));
     }
     private Message turnPacketRRERToMessage(PacketRRER packet) { // -- DONE
@@ -256,11 +266,12 @@ public class LinkLayer {
         bitString += turnNumberToBitString(packet.getUID(),3);
         bitString += turnNumberToBitString(packet.getOriginalSrcAddress(),2);
         bitString += turnNumberToBitString(packet.getSrcAddress(),2);
-        bitString += "000000";
+        bitString += turnNumberToBitString(packet.getNextNode(),2);
+        bitString += "0000";
         byte[] messageData = new byte[2];
         messageData[0] = (byte) Integer.parseInt(bitString.substring(0, 8), 2);
         messageData[1] = (byte) Integer.parseInt(bitString.substring(8,16), 2);
-        
+        System.out.println("LL - SENDING UACK");
         return new Message(MessageType.DATA_SHORT,ByteBuffer.wrap(messageData));
     }
     
@@ -320,31 +331,48 @@ public class LinkLayer {
         return "";
     }
     
+    private synchronized void putMessage(Message message) throws InterruptedException {
+        messages.addElement(message);
+        notify();
+        System.out.println("LL - PUT A MESSAGE AND READY TO SEND");
+    }
+    
+    private synchronized Message getMessage() throws InterruptedException {
+        while (messages.size() == 0) {
+            System.out.println("LL - WAITING FOR MESSAGE TO GET");
+            wait();
+        }
+        Message message = messages.firstElement();
+        messages.removeElementAt(0);
+        return message;
+    }
+    
     private class QueueThread extends Thread { // -- DONE
-        private List<Message> messageQueue;
         private LinkLayer linkLayer;
         
         private QueueThread(LinkLayer linkLayer) {
             this.linkLayer = linkLayer;
-            messageQueue = new ArrayList<Message>();
-        }
-        
-        private void putMessageToQueue(Message message) {
-            messageQueue.add(message);
         }
         
         @Override 
         public void run() {
             while (true) {
-                if (linkLayer.isMediumFree() && messageQueue.size() > 0) {
-                    try {
-                        sleep((int)(Math.random()*100));
-                        if (linkLayer.isMediumFree()) {
-                            Message nextMessage = messageQueue.get(0);
-                            linkLayer.sendToLowerLayer(nextMessage);
-                            messageQueue.remove(0);
+                try {
+                    Message currentMessage = linkLayer.getMessage();
+                    System.out.println("LL - RECEIVED A MESSAGE AND READY TO SEND");
+                    boolean sent = false;
+                    while (!sent) {
+                        if (linkLayer.canSendMessage()) {
+                            sleep((int) (Math.random()*1000));
+                            if (linkLayer.canSendMessage()) {
+                                linkLayer.sendToLowerLayer(currentMessage);
+                                sent = true;
+                                sleep(1000); // CHECK THIS
+                            }
                         }
-                    } catch (InterruptedException e) {}
+                    }
+                } catch (InterruptedException e) {
+                    System.out.println("LL - INTERRUPTED");
                 }
             }
         }

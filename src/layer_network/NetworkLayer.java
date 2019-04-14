@@ -36,7 +36,6 @@ public class NetworkLayer {
         processedMap.put(PacketConstant.TYPE_RERR, new HashMap<Integer,List<Integer>>());
         processedMap.put(PacketConstant.TYPE_UACK, new HashMap<Integer,List<Integer>>());
         processedMap.put(PacketConstant.TYPE_MACK, new HashMap<Integer,List<Integer>>());
-
     }
     
     public void setUpperLayer(TransportLayer transportLayer) {
@@ -71,12 +70,20 @@ public class NetworkLayer {
     }
     
     public synchronized void receiveFromUpperLayer(Packet packet) {
-        saveToProcessedMap(packet);
+        isSavedToProcessedMap(packet);
         if (packet instanceof PacketData) {
-            lowerLayer.receiveFromUpperLayer(packet); // CHECK THIS LATER
+            PacketData thisPacket = (PacketData) packet;
+            int nextNode = pathTable.getNextNode(client.getAddress(), thisPacket.getDesAddress(), client.getAddress());
+            thisPacket.setNextNode(nextNode);
+            System.out.println("SETTING NEXT NODE: " + nextNode + " FOR ADDRESS: " + thisPacket.getDesAddress());
+            TimeoutThread timeoutThread = new TimeoutThread(this,thisPacket);
+            timeoutThreadHolder[thisPacket.getUID()] = timeoutThread;
+            timeoutThread.start();
         } else if (packet instanceof PacketUACK) {
-            lowerLayer.receiveFromUpperLayer(packet);
-        }
+            PacketUACK thisPacket = (PacketUACK) packet;
+            thisPacket.setNextNode(pathTable.getNextNode(client.getAddress(), thisPacket.getOriginalSrcAddress(), client.getAddress()));
+            lowerLayer.receiveFromUpperLayer(thisPacket);
+        } 
     }
     
     private boolean makeRouteDiscovery(int desAddress, int UID) { // -- DONE
@@ -94,7 +101,7 @@ public class NetworkLayer {
         while (count < 3) { // 5 - NUMBER OF MAXIMUM RESEND
             try {
                 lowerLayer.receiveFromUpperLayer(routeDiscoveryPacket);
-                Thread.sleep(5000); // 3000 ms - TIMEOUT TIME
+                Thread.sleep(5000); // 5000 ms - TIMEOUT TIME
                 if (pathTable.canGoTo(desAddress)) {
                     return true;
                 }
@@ -107,17 +114,25 @@ public class NetworkLayer {
     }
     
     private void handleReceivedPacketData(PacketData packet) {
+        if (packet.getNextNode() != client.getAddress()) {
+            System.out.println("RECEIVING PACKET WITH NEXT NODE: " + packet.getNextNode() + " while current node: " + client.getAddress());
+            System.out.println("NL - NOT THE RIGHT NODE");
+            return;
+        }
         if (isSavedToProcessedMap(packet)) {
+            System.out.println("NL - HANDLED");
             return;
         }
         if (packet.getDesAddress() == client.getAddress()) {
+            sendPacketMACK(packet);
             upperLayer.receiveFromLowerLayer(packet);
-        } else {
-            if (pathTable.canGoTo(packet.getDesAddress())) {
+        } else if (packet.getNextNode() == client.getAddress()) {
+            int nextNode = pathTable.getNextNode(client.getAddress(), packet.getDesAddress(), client.getAddress());
+            if (nextNode != -1) {
                 // Forward to next hop
+                packet.setNextNode(nextNode);
+                System.out.println("NL - FORWARDING DATA PACKET");
                 lowerLayer.receiveFromUpperLayer(packet);
-                
-                // CHECK LATER
             } else {
                 // Send RRER
             }
@@ -125,8 +140,37 @@ public class NetworkLayer {
         
     }
     
-    private void handleReceivedPacketMACK(PacketMACK packet) {
+    private void sendPacketMACK(PacketData packet) {
+        int previousNode = pathTable.getPreviousNode(packet.getSrcAddress(),packet.getDesAddress(),packet.getNextNode());
+        PacketMACK packetMACK = new PacketMACK(packet.getSrcAddress(),packet.getUID(),previousNode);
+        saveToProcessedMap(packetMACK);
+        lowerLayer.receiveFromUpperLayer(packetMACK);
+    }
+    
+    private void handleReceivedPacketUACK(PacketUACK packet) {
+        if (isSavedToProcessedMap(packet)) {
+            return;
+        }
         
+        if (packet.getOriginalSrcAddress() == client.getAddress()) {
+            upperLayer.receiveFromLowerLayer(packet);
+        } else if (packet.getNextNode() == client.getAddress()) {
+            packet.setNextNode(pathTable.getNextNode(client.getAddress(), packet.getOriginalSrcAddress(), client.getAddress()));
+            lowerLayer.receiveFromUpperLayer(packet);
+        }
+    }
+   
+    private void handleReceivedPacketMACK(PacketMACK packet) {
+        if (isSavedToProcessedMap(packet)) {
+            return;
+        }
+        if (packet.getNextNode() == client.getAddress()) {
+            TimeoutThread timeoutThread = timeoutThreadHolder[packet.getOriginalUID()];
+            if (timeoutThread != null) {
+                timeoutThread.stopTimer();
+                timeoutThreadHolder[packet.getOriginalUID()] = null;
+            }
+        } 
     }
     
     private void handleReceivedPacketRREP(PacketRREP packet) { // -- DONE
@@ -162,17 +206,6 @@ public class NetworkLayer {
                 RREPProcessedMap.put(packet.getSrcAddress(), processedList);
             }
             lowerLayer.receiveFromUpperLayer(replyPacket);
-        } else if (pathTable.canGoTo(packet.getDesAddress())) {
-            pathTable.updateTable(path);
-            PacketRREP replyPacket = new PacketRREP(packet.getSrcAddress(),packet.getDesAddress(),packet.getUID(),path);
-            lowerLayer.receiveFromUpperLayer(replyPacket);
-            if (RREPProcessedMap.containsKey(packet.getSrcAddress())) {
-                RREPProcessedMap.get(packet.getSrcAddress()).add(packet.getUID());
-            } else {
-                List<Integer> processedList = new ArrayList<Integer>();
-                processedList.add(packet.getUID());
-                RREPProcessedMap.put(packet.getSrcAddress(), processedList);
-            }
         } else {
             PacketRREQ continueRREQPacket = new PacketRREQ(packet.getSrcAddress(),packet.getDesAddress(),packet.getUID(),path);
             lowerLayer.receiveFromUpperLayer(continueRREQPacket);
@@ -183,29 +216,15 @@ public class NetworkLayer {
         
     }
     
-    private void handleReceivedPacketUACK(PacketUACK packet) {
-        if (isSavedToProcessedMap(packet)) {
-            return;
-        }
-        
-        if (packet.getOriginalSrcAddress() == client.getAddress()) {
-            upperLayer.receiveFromLowerLayer(packet);
-        } else if (pathTable.canGoTo(packet.getOriginalSrcAddress())) {
-            lowerLayer.receiveFromUpperLayer(packet);
-        }
-    }
-    
     private void saveToProcessedMap(Packet packet) {
         if (packet instanceof PacketData) {
             PacketData thisPacket = (PacketData) packet;
             Map<Integer,List<Integer>> DATAProcessedMap = processedMap.get(PacketConstant.TYPE_DATA);
             if (DATAProcessedMap.containsKey(thisPacket.getSrcAddress())) { 
                 List<Integer> processedList = DATAProcessedMap.get(thisPacket.getSrcAddress());
-                if (!processedList.contains(thisPacket.getUID())) {
-                    processedList.add(thisPacket.getUID());
-                    if (processedList.size() >=5) {
-                        processedList.remove(0);
-                    }
+                processedList.add(thisPacket.getUID());
+                if (processedList.size() >=5) {
+                    processedList.remove(0);
                 }
             } else {
                 List<Integer> processedList = new ArrayList<Integer>();
@@ -217,16 +236,28 @@ public class NetworkLayer {
             Map<Integer,List<Integer>> UACKProcessedMap = processedMap.get(PacketConstant.TYPE_UACK);
             if (UACKProcessedMap.containsKey(thisPacket.getSrcAddress())) { 
                 List<Integer> processedList = UACKProcessedMap.get(thisPacket.getSrcAddress());
-                if (!processedList.contains(thisPacket.getUID())) {
-                    processedList.add(thisPacket.getUID());
-                    if (processedList.size() >=5) {
-                        processedList.remove(0);
-                    }
+                processedList.add(thisPacket.getUID());
+                if (processedList.size() >=5) {
+                    processedList.remove(0);
                 }
             } else {
                 List<Integer> processedList = new ArrayList<Integer>();
                 processedList.add(thisPacket.getUID());
                 UACKProcessedMap.put(thisPacket.getSrcAddress(), processedList);
+            }
+        } else if (packet instanceof PacketMACK) {
+            PacketMACK thisPacket = (PacketMACK) packet;
+            Map<Integer,List<Integer>> MACKProcessedMap = processedMap.get(PacketConstant.TYPE_MACK);
+            if (MACKProcessedMap.containsKey(thisPacket.getOriginalSrcAddress())) {
+                List<Integer> processedList = MACKProcessedMap.get(thisPacket.getOriginalSrcAddress());
+                processedList.add(thisPacket.getOriginalUID());
+                if (processedList.size() >=5) {
+                    processedList.remove(0);
+                }
+            } else {
+                List<Integer> processedList = new ArrayList<Integer>();
+                processedList.add(thisPacket.getOriginalSrcAddress());
+                MACKProcessedMap.put(thisPacket.getOriginalSrcAddress(), processedList);
             }
         }
     }
@@ -289,8 +320,8 @@ public class NetworkLayer {
         } else if (packet instanceof PacketUACK) {
             PacketUACK thisPacket = (PacketUACK) packet;
             Map<Integer,List<Integer>> UACKProcessedMap = processedMap.get(PacketConstant.TYPE_UACK);
-            if (UACKProcessedMap.containsKey(thisPacket.getSrcAddress())) {
-                List<Integer> processedList = UACKProcessedMap.get(thisPacket.getSrcAddress());
+            if (UACKProcessedMap.containsKey(thisPacket.getOriginalSrcAddress())) {
+                List<Integer> processedList = UACKProcessedMap.get(thisPacket.getOriginalSrcAddress());
                 if (processedList.contains(thisPacket.getUID())) {
                     return true;
                 } else {
@@ -302,11 +333,33 @@ public class NetworkLayer {
             } else {
                 List<Integer> processedList = new ArrayList<Integer>();
                 processedList.add(thisPacket.getUID());
-                UACKProcessedMap.put(thisPacket.getSrcAddress(), processedList);
+                UACKProcessedMap.put(thisPacket.getOriginalSrcAddress(), processedList);
+            }
+        } else if (packet instanceof PacketMACK) {
+            PacketMACK thisPacket = (PacketMACK) packet;
+            Map<Integer,List<Integer>> MACKProcessedMap = processedMap.get(PacketConstant.TYPE_MACK);
+            if (MACKProcessedMap.containsKey(thisPacket.getOriginalSrcAddress())) {
+                List<Integer> processedList = MACKProcessedMap.get(thisPacket.getOriginalSrcAddress());
+                if (processedList.contains(thisPacket.getOriginalUID())) {
+                    return true;
+                } else {
+                    processedList.add(thisPacket.getOriginalUID());
+                    if (processedList.size() >=5) {
+                        processedList.remove(0);
+                    }
+                }
+            } else {
+                List<Integer> processedList = new ArrayList<Integer>();
+                processedList.add(thisPacket.getOriginalUID());
+                MACKProcessedMap.put(thisPacket.getOriginalSrcAddress(), processedList);
             }
         }
         
         return false;
+    }
+    
+    private LinkLayer getLowerLayer() {
+        return this.lowerLayer;
     }
     
     private class TimeoutThread extends Thread {
@@ -333,16 +386,17 @@ public class NetworkLayer {
             int count = 0;
             while (running) {
                 try {
+                    networkLayer.getLowerLayer().receiveFromUpperLayer(packet); 
 //                    if () // have received Packet MACK then...
-                    sleep(1000);
+                    sleep(8000);
                     count++;
-                    if (count == 2) {
-                        // make another route discovery
+                    if (count == 2) { // 2
+                        // send RRER
                         break;
                     }
                 } catch (InterruptedException e) {}
-                
             }
+            System.out.println("THREAD KILLED");
         }
     }
 

@@ -6,6 +6,7 @@ public class PacketData implements Packet {
     private int UID;
     private String message;
     private boolean finPacket;
+    private int nextNode;
     
     public PacketData(int srcAddress, int desAddress, int UID, String message, boolean isFinPacket) { 
         this.srcAddress = srcAddress;
@@ -13,6 +14,19 @@ public class PacketData implements Packet {
         this.UID = UID;
         this.message = message;
         this.finPacket = isFinPacket;
+    }
+    
+    public PacketData(int srcAddress, int desAddress, int UID, String message, boolean isFinPacket, int nextNode) { 
+        this(srcAddress,desAddress,UID,message,isFinPacket);
+        this.nextNode = nextNode;
+    }
+    
+    public void setNextNode(int nextNode) {
+        this.nextNode = nextNode;
+    }
+    
+    public int getNextNode() {
+        return this.nextNode;
     }
 
     public int getSrcAddress() {

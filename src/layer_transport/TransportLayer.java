@@ -35,8 +35,8 @@ public class TransportLayer {
             PacketData thisPacket = (PacketData) packet;
             if (thisPacket.isFinPacket()) {
                 upperLayer.receiveFromLowerLayer(thisPacket.getMessage(), thisPacket.getSrcAddress());
-                //  public PacketUACK(int srcAddress, int originalSrcAddress, int UID)
                 PacketUACK UACKPacket = new PacketUACK(client.getAddress(),thisPacket.getSrcAddress(),thisPacket.getUID());
+                System.out.println("TL - SENDING UACK");
                 lowerLayer.receiveFromUpperLayer(UACKPacket);
             }
         } else if (packet instanceof PacketUACK) {
@@ -44,17 +44,12 @@ public class TransportLayer {
             TimeoutThread timeoutThread = this.timeoutThreadHolder[thisPacket.getUID()];
             if (timeoutThread != null) {
                 PacketData sentPacket = timeoutThread.getPacket();
-                if (sentPacket.getSrcAddress() == thisPacket.getOriginalSrcAddress() 
-                        && sentPacket.getDesAddress() == thisPacket.getSrcAddress()
-                        && sentPacket.getUID() == thisPacket.getUID()) {
-                    timeoutThread.stopTimer();
-                    upperLayer.receiveFromLowerLayer("Message to " + UserDatabase.getUser(sentPacket.getDesAddress()).getUsername() +
-                            " sent successfully", UserDatabase.SYSTEM_ID);
-                }
+                timeoutThread.stopTimer();
+                timeoutThread.interrupt();
+                upperLayer.receiveFromLowerLayer("Message to " + UserDatabase.getUser(sentPacket.getDesAddress()).getUsername() +
+                        " sent successfully", UserDatabase.SYSTEM_ID);
             }
-        } else if (packet instanceof PacketMACK) {
-            
-        }
+        } 
     }
     
     public synchronized void receiveFromUpperLayer(String textMessage, int receiverAddress) {
@@ -62,7 +57,7 @@ public class TransportLayer {
         if (lowerLayer.candSendTo(receiverAddress, UID)) {
             // LET ASSUME TEXT IS ALWAYS LESS THAN 14 CHARACTER
             updateUID();
-            Packet packet = new PacketData(client.getAddress(),receiverAddress, UID, textMessage,true);
+            PacketData packet = new PacketData(client.getAddress(),receiverAddress, UID, textMessage,true);
             TimeoutThread timeoutThread = new TimeoutThread(this,packet);
             timeoutThreadHolder[UID] = timeoutThread;
             timeoutThread.start();
@@ -101,7 +96,7 @@ public class TransportLayer {
         private TransportLayer transportLayer;
         private boolean running;
         
-        private TimeoutThread(TransportLayer transportLayer, Packet packet) {
+        private TimeoutThread(TransportLayer transportLayer, PacketData packet) {
             this.packet = (PacketData) packet;
             this.transportLayer = transportLayer;
             this.running = true;
@@ -121,6 +116,7 @@ public class TransportLayer {
             while (running) {
                 try {
                     if (transportLayer.getUID() == packet.getUID()) {
+                        System.out.println("TP - SENDING DATA");
                         transportLayer.getLowerLayer().receiveFromUpperLayer(packet);
                     } else {
                         break;

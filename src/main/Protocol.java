@@ -15,7 +15,7 @@ public class Protocol {
     // The port to connect to. 8954 for the simulation server.
     private static int SERVER_PORT = 8954;
     // The frequency to use.
-    private static int frequency = 111;
+    private static int frequency = 777;
     private Client client;
     
     private ApplicationLayer applicationLayer;
@@ -59,7 +59,7 @@ public class Protocol {
                 e.printStackTrace();
             }
         } else {
-
+            System.out.println("PL - NULL MESSAGE");
         }
     }
 

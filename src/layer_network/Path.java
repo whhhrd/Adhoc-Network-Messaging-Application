@@ -19,12 +19,26 @@ public class Path {
         path.add(address);
     }
     
+    public int getNextNode(int currentNode) {
+        int currentIndex = path.indexOf(currentNode);
+        return path.get(currentIndex + 1);
+    }
+    
+    public int getPreviousNode(int currentNode) {
+        int currentIndex = path.indexOf(currentNode);
+        return path.get(currentIndex - 1);
+    }
+    
     public int findIndex(int address) {
         return path.indexOf(address);
     }
     
     public List<Integer> getPath() {
         return this.path;
+    }
+    
+    public int getSrcAddress() {
+        return this.srcAddress;
     }
     
     public int getDesAddress() {
