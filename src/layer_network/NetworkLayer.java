@@ -116,9 +116,9 @@ public class NetworkLayer {
         if (packet.getNextNode() != client.getAddress()) {
             return;
         }
-        if (isSavedToProcessedMap(packet)) {
-            return;
-        }
+//        if (isSavedToProcessedMap(packet)) {
+//            return;
+//        }
         if (packet.getDesAddress() == client.getAddress()) {
             sendPacketMACK(packet);
             upperLayer.receiveFromLowerLayer(packet);
@@ -385,7 +385,7 @@ public class NetworkLayer {
                     if (!running) {
                         break;
                     }
-                    sleep(1500);
+                    sleep(15000);
                     if (!running) {
                         break;
                     }

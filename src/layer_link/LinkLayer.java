@@ -56,13 +56,21 @@ public class LinkLayer {
     
     public void receiveMessage(Message message) { // -- DONE
         if (message.getType() == MessageType.BUSY) {
-            this.mediumFree = false;
+            synchronized (messages) {
+                this.mediumFree = false;
+            }
         } else if (message.getType() == MessageType.SENDING) {
-            this.sending = true;
+            synchronized (messages) {
+                this.sending = true;
+            }
         } else if (message.getType() == MessageType.FREE) {
-            this.mediumFree = true;
+            synchronized (messages) {
+                this.mediumFree = true;
+            }
         } else if (message.getType() == MessageType.DONE_SENDING) {
-            this.sending = false;
+            synchronized (messages) {
+                this.sending = false;
+            }
         } else if (message.getType() == MessageType.DATA || message.getType() == MessageType.DATA_SHORT) {
             upperLayer.receiveFromLowerLayer(turnMessageToPacket(message));
         }
@@ -167,7 +175,11 @@ public class LinkLayer {
     }
     
     private boolean canSendMessage() { // -- DONE
-        return mediumFree && !sending;
+        boolean canSend;
+        synchronized (messages) {
+            canSend = mediumFree && !sending; 
+        }
+        return canSend;
     }
     
     private Message turnPacketDataToMessage(PacketData packet) { // -- DONE
@@ -332,7 +344,7 @@ public class LinkLayer {
     private void putMessage(Message message) throws InterruptedException {
         synchronized (messages) {
             messages.addElement(message);
-            System.out.println("MESSAGE ADDED");
+//            System.out.println("MESSAGE ADDED");
             messages.notify();
         }
     }
@@ -340,7 +352,7 @@ public class LinkLayer {
     private Message getMessage() throws InterruptedException {
         synchronized (messages) {
             while (messages.size() == 0) {
-                System.out.println("WAITING FOR MESSAGE");
+//                System.out.println("WAITING FOR MESSAGE");
                 messages.wait();
             }
         }
@@ -348,7 +360,7 @@ public class LinkLayer {
         synchronized (messages) {
             Message message = messages.firstElement();
             messages.removeElementAt(0);
-            System.out.println("MESSAGE TAKEN");
+//            System.out.println("MESSAGE TAKEN");
             return message;
         }
     }
@@ -365,24 +377,26 @@ public class LinkLayer {
             while (true) {
                 try {
                     Message currentMessage = linkLayer.getMessage();
-                    System.out.println("PROCESSING MESSAGE 1");
+//                    System.out.println("PROCESSING MESSAGE 1");
                     boolean sent = false;
-                    System.out.println("PROCESSING MESSAGE 1.5");
+//                    System.out.println("PROCESSING MESSAGE 1.5");
                     while (!sent) {
                         if (linkLayer.canSendMessage()) {
-                            System.out.println("PROCESSING MESSAGE 2");
+//                            System.out.println("PROCESSING MESSAGE 2");
                             sleep((int) (Math.random()*1000));
-                            System.out.println("PROCESSING MESSAGE 3");
+//                            System.out.println("PROCESSING MESSAGE 3");
                             if (linkLayer.canSendMessage()) {
                                 linkLayer.sendToLowerLayer(currentMessage);
                                 sent = true;
-                                System.out.println("PROCESSING MESSAGE DONE");
+//                                System.out.println("PROCESSING MESSAGE DONE");
                                 sleep(1000); // CHECK THIS
                             }
-                            System.out.println("PROCESSING MESSAGE 4");
+//                            System.out.println("PROCESSING MESSAGE 4");
+                        } else {
+                            sleep((int) (Math.random()*100));
                         }
                     }
-                    System.out.println("PROCESSING MESSAGE DONE 2");
+//                    System.out.println("PROCESSING MESSAGE DONE 2");
                 } catch (InterruptedException e) {
                     System.out.println("LL - INTERRUPTED");
                 }
