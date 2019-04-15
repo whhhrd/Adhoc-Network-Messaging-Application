@@ -24,6 +24,7 @@ public class TransportLayer {
     private TimeoutThread[] timeoutThreadHolder;
     private PacketData[] savedSendingPacketData;
     private Map<Integer,List<PacketData>> savedReceivingPacketData;
+    private Map<Integer, List<Integer>> processedDataMap;
     
     public TransportLayer(Client client) {
         this.client = client;
@@ -31,6 +32,7 @@ public class TransportLayer {
         this.timeoutThreadHolder = new TimeoutThread[8];
         this.savedSendingPacketData = new PacketData[8];
         this.savedReceivingPacketData = new HashMap<Integer,List<PacketData>>();
+        this.processedDataMap = new HashMap<Integer,List<Integer>>();
     }
     
     public void setUpperLayer(ApplicationLayer applicationLayer) {
@@ -44,12 +46,16 @@ public class TransportLayer {
     public synchronized void receiveFromLowerLayer(Packet packet) {
         if (packet instanceof PacketData) {
             PacketData thisPacket = (PacketData) packet;
-            saveToReceivingPacketData(thisPacket);
-            if (thisPacket.isFinPacket()) {
-                List<PacketData> savedReceivedPacketDataList = this.savedReceivingPacketData.get(thisPacket.getSrcAddress());
-                String textMessage = combineReceivedPacketDataToTextMessage(savedReceivedPacketDataList);
-                this.savedReceivingPacketData.remove(thisPacket.getSrcAddress());
-                upperLayer.receiveFromLowerLayer(textMessage, thisPacket.getSrcAddress());
+            if (!processedDataMap.containsKey(thisPacket.getSrcAddress()) 
+                    || !processedDataMap.get(thisPacket.getSrcAddress()).contains(thisPacket.getUID())) {
+                saveToReceivingPacketData(thisPacket);
+                putToProcessedDataMap(thisPacket);
+                if (thisPacket.isFinPacket()) {
+                    List<PacketData> savedReceivedPacketDataList = this.savedReceivingPacketData.get(thisPacket.getSrcAddress());
+                    String textMessage = combineReceivedPacketDataToTextMessage(savedReceivedPacketDataList);
+                    this.savedReceivingPacketData.remove(thisPacket.getSrcAddress());
+                    upperLayer.receiveFromLowerLayer(textMessage, thisPacket.getSrcAddress());
+                }
             }
 
             PacketUACK UACKPacket = new PacketUACK(client.getAddress(),thisPacket.getSrcAddress(),thisPacket.getUID());
@@ -82,7 +88,7 @@ public class TransportLayer {
     public synchronized void receiveFromUpperLayer(String textMessage, int receiverAddress) {
         if (lowerLayer.candSendTo(receiverAddress)) {
             updateUID();
-            putMessageToSavedSendingArray(textMessage,receiverAddress); //
+            saveMessageToSendingArray(textMessage,receiverAddress); //
             PacketData packet = this.savedSendingPacketData[UID]; //
             TimeoutThread timeoutThread = new TimeoutThread(this,packet);
             timeoutThreadHolder[packet.getUID()] = timeoutThread;
@@ -115,6 +121,20 @@ public class TransportLayer {
         return result;
     }
     
+    private void putToProcessedDataMap(PacketData packet) {
+        List<Integer> processedList;
+        if (processedDataMap.containsKey(packet.getSrcAddress())) {
+            processedList = processedDataMap.get(packet.getSrcAddress());
+        } else {
+            processedList = new ArrayList<Integer>();
+        }
+        processedList.add(packet.getUID());
+        if (processedList.size() >= 3) {
+            processedList.remove(0);
+        }
+        processedDataMap.put(packet.getSrcAddress(), processedList);
+    }
+    
     private void saveToReceivingPacketData(PacketData packet) {
         List<PacketData> packetDataList;
         if (this.savedReceivingPacketData.containsKey(packet.getSrcAddress())) {
@@ -126,7 +146,7 @@ public class TransportLayer {
         this.savedReceivingPacketData.put(packet.getSrcAddress(),packetDataList);
     }
     
-    private void putMessageToSavedSendingArray(String textMessage, int receiverAddress) {
+    private void saveMessageToSendingArray(String textMessage, int receiverAddress) {
         int nextUID = UID;
         while (textMessage.length() > 14) {
             String textPart = textMessage.substring(0, 14);
@@ -166,13 +186,11 @@ public class TransportLayer {
     private class TimeoutThread extends Thread {
         private PacketData packet;
         private TransportLayer transportLayer;
-        private boolean running;
         
         private TimeoutThread(TransportLayer transportLayer, PacketData packet) {
             this.setName("TIMEOUT-THREAD-TRANSPORT LAYER");
             this.packet = (PacketData) packet;
             this.transportLayer = transportLayer;
-            this.running = true;
         }
         
         private PacketData getPacket() {
@@ -180,13 +198,13 @@ public class TransportLayer {
         }
         
         private void stopTimer() {
-            running = false;
+            this.interrupt();
         }
         
         @Override
         public void run() {
             int count = 0;
-            while (running) {
+            while (true) {
                 try {
                     if (transportLayer.getUID() == packet.getUID()) {
                         transportLayer.getLowerLayer().receiveFromUpperLayer(packet);
@@ -201,7 +219,9 @@ public class TransportLayer {
                         transportLayer.getTimeoutThreadHolder()[packet.getUID()] = null;
                         break;
                     }
-                } catch (InterruptedException e) {}
+                } catch (InterruptedException e) {
+                    break;
+                }
             }
         }
     }
