@@ -185,7 +185,6 @@ public class LinkLayer {
         for(int i = 0; i < packet.getMessage().length(); i++) {
             messageData[2 + i] = (byte) packet.getMessage().charAt(i);
         }
-        System.out.println("LL - SENDING DATA");
         return new Message(MessageType.DATA,ByteBuffer.wrap(messageData));
     }
     
@@ -271,7 +270,6 @@ public class LinkLayer {
         byte[] messageData = new byte[2];
         messageData[0] = (byte) Integer.parseInt(bitString.substring(0, 8), 2);
         messageData[1] = (byte) Integer.parseInt(bitString.substring(8,16), 2);
-        System.out.println("LL - SENDING UACK");
         return new Message(MessageType.DATA_SHORT,ByteBuffer.wrap(messageData));
     }
     
@@ -331,20 +329,28 @@ public class LinkLayer {
         return "";
     }
     
-    private synchronized void putMessage(Message message) throws InterruptedException {
-        messages.addElement(message);
-        notify();
-        System.out.println("LL - PUT A MESSAGE AND READY TO SEND");
+    private void putMessage(Message message) throws InterruptedException {
+        synchronized (messages) {
+            messages.addElement(message);
+            System.out.println("MESSAGE ADDED");
+            messages.notify();
+        }
     }
     
-    private synchronized Message getMessage() throws InterruptedException {
-        while (messages.size() == 0) {
-            System.out.println("LL - WAITING FOR MESSAGE TO GET");
-            wait();
+    private Message getMessage() throws InterruptedException {
+        synchronized (messages) {
+            while (messages.size() == 0) {
+                System.out.println("WAITING FOR MESSAGE");
+                messages.wait();
+            }
         }
-        Message message = messages.firstElement();
-        messages.removeElementAt(0);
-        return message;
+        
+        synchronized (messages) {
+            Message message = messages.firstElement();
+            messages.removeElementAt(0);
+            System.out.println("MESSAGE TAKEN");
+            return message;
+        }
     }
     
     private class QueueThread extends Thread { // -- DONE
@@ -359,18 +365,24 @@ public class LinkLayer {
             while (true) {
                 try {
                     Message currentMessage = linkLayer.getMessage();
-                    System.out.println("LL - RECEIVED A MESSAGE AND READY TO SEND");
+                    System.out.println("PROCESSING MESSAGE 1");
                     boolean sent = false;
+                    System.out.println("PROCESSING MESSAGE 1.5");
                     while (!sent) {
                         if (linkLayer.canSendMessage()) {
+                            System.out.println("PROCESSING MESSAGE 2");
                             sleep((int) (Math.random()*1000));
+                            System.out.println("PROCESSING MESSAGE 3");
                             if (linkLayer.canSendMessage()) {
                                 linkLayer.sendToLowerLayer(currentMessage);
                                 sent = true;
+                                System.out.println("PROCESSING MESSAGE DONE");
                                 sleep(1000); // CHECK THIS
                             }
+                            System.out.println("PROCESSING MESSAGE 4");
                         }
                     }
+                    System.out.println("PROCESSING MESSAGE DONE 2");
                 } catch (InterruptedException e) {
                     System.out.println("LL - INTERRUPTED");
                 }

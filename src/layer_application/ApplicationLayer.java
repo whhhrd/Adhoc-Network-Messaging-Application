@@ -81,7 +81,15 @@ public class ApplicationLayer {
     }
     
     private void sendMessage(String[] userInput) {
+        if (userInput.length <= 1) {
+            sys("Please input correct command. Type /help for support.");
+            return;
+        }
         String name = userInput[1];
+        if (name.equals( UserDatabase.getUser(client.getAddress()).getUsername())) {
+            sys("Cannot send a message to yourself.");
+            return;
+        }
         String[] messageParts = Arrays.copyOfRange(userInput, 2, userInput.length);
         String message = String.join(" ", messageParts);
         if (this.usersMap.containsValue(name)) {

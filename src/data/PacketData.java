@@ -48,4 +48,9 @@ public class PacketData implements Packet {
     public boolean isFinPacket() {
         return this.finPacket;
     }
+    
+    @Override
+    public String toString() {
+        return "FROM " + this.srcAddress + " TO " + this.desAddress + ": " + this.message;
+    }
 }

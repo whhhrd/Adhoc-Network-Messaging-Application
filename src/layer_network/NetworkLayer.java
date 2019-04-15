@@ -46,11 +46,11 @@ public class NetworkLayer {
         this.lowerLayer = linkLayer;
     }
     
-    public boolean candSendTo(int receiverAddress, int UID) {
+    public boolean candSendTo(int receiverAddress) {
         if (pathTable.canGoTo(receiverAddress)) {
             return true;
         } 
-        return makeRouteDiscovery(receiverAddress, UID);
+        return makeRouteDiscovery(receiverAddress, upperLayer.getNewUID());
     }
     
     public synchronized void receiveFromLowerLayer(Packet packet) {
@@ -75,7 +75,6 @@ public class NetworkLayer {
             PacketData thisPacket = (PacketData) packet;
             int nextNode = pathTable.getNextNode(client.getAddress(), thisPacket.getDesAddress(), client.getAddress());
             thisPacket.setNextNode(nextNode);
-            System.out.println("SETTING NEXT NODE: " + nextNode + " FOR ADDRESS: " + thisPacket.getDesAddress());
             TimeoutThread timeoutThread = new TimeoutThread(this,thisPacket);
             timeoutThreadHolder[thisPacket.getUID()] = timeoutThread;
             timeoutThread.start();
@@ -115,12 +114,9 @@ public class NetworkLayer {
     
     private void handleReceivedPacketData(PacketData packet) {
         if (packet.getNextNode() != client.getAddress()) {
-            System.out.println("RECEIVING PACKET WITH NEXT NODE: " + packet.getNextNode() + " while current node: " + client.getAddress());
-            System.out.println("NL - NOT THE RIGHT NODE");
             return;
         }
         if (isSavedToProcessedMap(packet)) {
-            System.out.println("NL - HANDLED");
             return;
         }
         if (packet.getDesAddress() == client.getAddress()) {
@@ -131,7 +127,6 @@ public class NetworkLayer {
             if (nextNode != -1) {
                 // Forward to next hop
                 packet.setNextNode(nextNode);
-                System.out.println("NL - FORWARDING DATA PACKET");
                 lowerLayer.receiveFromUpperLayer(packet);
             } else {
                 // Send RRER
@@ -387,8 +382,13 @@ public class NetworkLayer {
             while (running) {
                 try {
                     networkLayer.getLowerLayer().receiveFromUpperLayer(packet); 
-//                    if () // have received Packet MACK then...
-                    sleep(8000);
+                    if (!running) {
+                        break;
+                    }
+                    sleep(1500);
+                    if (!running) {
+                        break;
+                    }
                     count++;
                     if (count == 2) { // 2
                         // send RRER
@@ -396,7 +396,6 @@ public class NetworkLayer {
                     }
                 } catch (InterruptedException e) {}
             }
-            System.out.println("THREAD KILLED");
         }
     }
 

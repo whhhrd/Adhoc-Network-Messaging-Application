@@ -68,7 +68,7 @@ public class PathTable {
             pathList.add(newPath);
         }
         
-        System.out.println("->> [UPDATE] " + this);
+//        System.out.println("->> [UPDATE] " + this);
     }
     
     @Override

@@ -1,8 +1,12 @@
 package layer_transport;
 
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
 import data.Packet;
 import data.PacketData;
-import data.PacketMACK;
 import data.PacketUACK;
 import database.UserDatabase;
 import layer_application.ApplicationLayer;
@@ -10,16 +14,23 @@ import layer_network.NetworkLayer;
 import main.Client;
 
 public class TransportLayer {
+    private final static boolean IS_FIN = true;
+    private final static boolean IS_NOT_FIN = false;
+    
     private Client client;
     private ApplicationLayer upperLayer;
     private NetworkLayer lowerLayer;
     private int UID;
     private TimeoutThread[] timeoutThreadHolder;
+    private PacketData[] savedSendingPacketData;
+    private Map<Integer,List<PacketData>> savedReceivingPacketData;
     
     public TransportLayer(Client client) {
         this.client = client;
         this.UID = 0;
         this.timeoutThreadHolder = new TimeoutThread[8];
+        this.savedSendingPacketData = new PacketData[8];
+        this.savedReceivingPacketData = new HashMap<Integer,List<PacketData>>();
     }
     
     public void setUpperLayer(ApplicationLayer applicationLayer) {
@@ -33,38 +44,103 @@ public class TransportLayer {
     public synchronized void receiveFromLowerLayer(Packet packet) {
         if (packet instanceof PacketData) {
             PacketData thisPacket = (PacketData) packet;
+            saveToReceivingPacketData(thisPacket);
             if (thisPacket.isFinPacket()) {
-                upperLayer.receiveFromLowerLayer(thisPacket.getMessage(), thisPacket.getSrcAddress());
-                PacketUACK UACKPacket = new PacketUACK(client.getAddress(),thisPacket.getSrcAddress(),thisPacket.getUID());
-                System.out.println("TL - SENDING UACK");
-                lowerLayer.receiveFromUpperLayer(UACKPacket);
+                List<PacketData> savedReceivedPacketDataList = this.savedReceivingPacketData.get(thisPacket.getSrcAddress());
+                String textMessage = combineReceivedPacketDataToTextMessage(savedReceivedPacketDataList);
+                this.savedReceivingPacketData.remove(thisPacket.getSrcAddress());
+                upperLayer.receiveFromLowerLayer(textMessage, thisPacket.getSrcAddress());
             }
+
+            PacketUACK UACKPacket = new PacketUACK(client.getAddress(),thisPacket.getSrcAddress(),thisPacket.getUID());
+            lowerLayer.receiveFromUpperLayer(UACKPacket);
         } else if (packet instanceof PacketUACK) {
             PacketUACK thisPacket = (PacketUACK) packet;
             TimeoutThread timeoutThread = this.timeoutThreadHolder[thisPacket.getUID()];
             if (timeoutThread != null) {
-                PacketData sentPacket = timeoutThread.getPacket();
+                PacketData sentPacketData = timeoutThread.getPacket();
                 timeoutThread.stopTimer();
-                timeoutThread.interrupt();
-                upperLayer.receiveFromLowerLayer("Message to " + UserDatabase.getUser(sentPacket.getDesAddress()).getUsername() +
-                        " sent successfully", UserDatabase.SYSTEM_ID);
+                this.savedSendingPacketData[sentPacketData.getUID()] = null;
+                if (sentPacketData.isFinPacket()) {
+                    upperLayer.receiveFromLowerLayer("Message to " + UserDatabase.getUser(sentPacketData.getDesAddress()).getUsername() +
+                            " sent successfully", UserDatabase.SYSTEM_ID);
+                } else {
+                    int nextUID = getNextUID(sentPacketData.getUID());
+                    PacketData nextPacketData = this.savedSendingPacketData[nextUID];
+                    if (nextPacketData == null) {
+                        System.out.println("NEXT PACKET DATA IS NULL WITH UID: " + nextUID);
+                    }
+                    TimeoutThread nextTimeoutThread = new TimeoutThread(this,nextPacketData);
+                    timeoutThreadHolder[nextPacketData.getUID()] = nextTimeoutThread;
+                    updateUID();
+                    nextTimeoutThread.start();
+                }
             }
         } 
     }
     
     public synchronized void receiveFromUpperLayer(String textMessage, int receiverAddress) {
-        updateUID();
-        if (lowerLayer.candSendTo(receiverAddress, UID)) {
+        if (lowerLayer.candSendTo(receiverAddress)) {
             // LET ASSUME TEXT IS ALWAYS LESS THAN 14 CHARACTER
             updateUID();
-            PacketData packet = new PacketData(client.getAddress(),receiverAddress, UID, textMessage,true);
+//            PacketData packet = new PacketData(client.getAddress(),receiverAddress, UID, textMessage,true);
+            putMessageToSavedSendingArray(textMessage,receiverAddress); //
+            PacketData packet = this.savedSendingPacketData[UID]; //
             TimeoutThread timeoutThread = new TimeoutThread(this,packet);
-            timeoutThreadHolder[UID] = timeoutThread;
+            timeoutThreadHolder[packet.getUID()] = timeoutThread;
             timeoutThread.start();
         } else {
             upperLayer.receiveFromLowerLayer( "Can't not send the message to " 
         + UserDatabase.getUser(receiverAddress).getUsername(),UserDatabase.SYSTEM_ID);
         }
+    }
+    
+    public int getNextUID(int currentUID) {
+        if (currentUID == 7) {
+            return 0;
+        }
+        return currentUID+1;
+    }
+    
+    public int getNewUID() {
+        updateUID();
+        return this.UID;
+    }
+    
+//    private void setUID(int UID) {
+//        this.UID = UID;
+//    }
+    
+    private String combineReceivedPacketDataToTextMessage(List<PacketData> packetDataList) {
+        String result = "";
+        for (PacketData packet: packetDataList) {
+            result += packet.getMessage();
+        }
+        return result;
+    }
+    
+    private void saveToReceivingPacketData(PacketData packet) {
+        List<PacketData> packetDataList;
+        if (this.savedReceivingPacketData.containsKey(packet.getSrcAddress())) {
+            packetDataList = this.savedReceivingPacketData.get(packet.getSrcAddress());
+        } else {
+            packetDataList = new ArrayList<PacketData>();
+        }
+        packetDataList.add(packet);
+        this.savedReceivingPacketData.put(packet.getSrcAddress(),packetDataList);
+    }
+    
+    private void putMessageToSavedSendingArray(String textMessage, int receiverAddress) {
+        int nextUID = UID;
+        while (textMessage.length() > 14) {
+            String textPart = textMessage.substring(0, 14);
+            PacketData packet = new PacketData(client.getAddress(),receiverAddress,nextUID,textPart,IS_NOT_FIN);
+            this.savedSendingPacketData[nextUID] = packet;
+            nextUID++;
+            textMessage = textMessage.substring(14);
+        }
+        PacketData finalPacket = new PacketData(client.getAddress(),receiverAddress,nextUID,textMessage,IS_FIN);
+        this.savedSendingPacketData[nextUID] = finalPacket;
     }
     
     private TimeoutThread[] getTimeoutThreadHolder() {
@@ -97,6 +173,7 @@ public class TransportLayer {
         private boolean running;
         
         private TimeoutThread(TransportLayer transportLayer, PacketData packet) {
+            this.setName("TIMEOUT-THREAD-TRANSPORT LAYER");
             this.packet = (PacketData) packet;
             this.transportLayer = transportLayer;
             this.running = true;
@@ -116,15 +193,14 @@ public class TransportLayer {
             while (running) {
                 try {
                     if (transportLayer.getUID() == packet.getUID()) {
-                        System.out.println("TP - SENDING DATA");
                         transportLayer.getLowerLayer().receiveFromUpperLayer(packet);
                     } else {
                         break;
                     }
-                    sleep(20000);
+                    sleep(30000);
                     count++;
                     if (count == 3) {
-                        transportLayer.getUpperLayer().receiveFromLowerLayer( "Can't not send the message to " 
+                        transportLayer.getUpperLayer().receiveFromLowerLayer( "Cannot send the message to " 
                                 + UserDatabase.getUser(packet.getDesAddress()).getUsername(),UserDatabase.SYSTEM_ID);
                         transportLayer.getTimeoutThreadHolder()[packet.getUID()] = null;
                         break;
