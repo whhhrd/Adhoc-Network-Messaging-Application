@@ -81,16 +81,16 @@ public class TransportLayer {
     
     public synchronized void receiveFromUpperLayer(String textMessage, int receiverAddress) {
         if (lowerLayer.candSendTo(receiverAddress)) {
-            // LET ASSUME TEXT IS ALWAYS LESS THAN 14 CHARACTER
             updateUID();
-//            PacketData packet = new PacketData(client.getAddress(),receiverAddress, UID, textMessage,true);
             putMessageToSavedSendingArray(textMessage,receiverAddress); //
             PacketData packet = this.savedSendingPacketData[UID]; //
             TimeoutThread timeoutThread = new TimeoutThread(this,packet);
             timeoutThreadHolder[packet.getUID()] = timeoutThread;
-            timeoutThread.start();
+            if (timeoutThread != null) {
+                timeoutThread.start();
+            }
         } else {
-            upperLayer.receiveFromLowerLayer( "Can't not send the message to " 
+            upperLayer.receiveFromLowerLayer( "Cannot send the message to " 
         + UserDatabase.getUser(receiverAddress).getUsername(),UserDatabase.SYSTEM_ID);
         }
     }
@@ -106,10 +106,6 @@ public class TransportLayer {
         updateUID();
         return this.UID;
     }
-    
-//    private void setUID(int UID) {
-//        this.UID = UID;
-//    }
     
     private String combineReceivedPacketDataToTextMessage(List<PacketData> packetDataList) {
         String result = "";
@@ -136,7 +132,7 @@ public class TransportLayer {
             String textPart = textMessage.substring(0, 14);
             PacketData packet = new PacketData(client.getAddress(),receiverAddress,nextUID,textPart,IS_NOT_FIN);
             this.savedSendingPacketData[nextUID] = packet;
-            nextUID++;
+            nextUID = getNextUID(nextUID);
             textMessage = textMessage.substring(14);
         }
         PacketData finalPacket = new PacketData(client.getAddress(),receiverAddress,nextUID,textMessage,IS_FIN);

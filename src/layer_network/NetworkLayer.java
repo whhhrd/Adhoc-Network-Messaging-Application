@@ -116,9 +116,9 @@ public class NetworkLayer {
         if (packet.getNextNode() != client.getAddress()) {
             return;
         }
-//        if (isSavedToProcessedMap(packet)) {
-//            return;
-//        }
+        if (isSavedToProcessedMap(packet)) {
+            return;
+        }
         if (packet.getDesAddress() == client.getAddress()) {
             sendPacketMACK(packet);
             upperLayer.receiveFromLowerLayer(packet);
@@ -212,21 +212,22 @@ public class NetworkLayer {
     }
     
     private void saveToProcessedMap(Packet packet) {
-        if (packet instanceof PacketData) {
-            PacketData thisPacket = (PacketData) packet;
-            Map<Integer,List<Integer>> DATAProcessedMap = processedMap.get(PacketConstant.TYPE_DATA);
-            if (DATAProcessedMap.containsKey(thisPacket.getSrcAddress())) { 
-                List<Integer> processedList = DATAProcessedMap.get(thisPacket.getSrcAddress());
-                processedList.add(thisPacket.getUID());
-                if (processedList.size() >=5) {
-                    processedList.remove(0);
-                }
-            } else {
-                List<Integer> processedList = new ArrayList<Integer>();
-                processedList.add(thisPacket.getUID());
-                DATAProcessedMap.put(thisPacket.getSrcAddress(), processedList);
-            }
-        } else if (packet instanceof PacketUACK) {
+//        if (packet instanceof PacketData) {
+//            PacketData thisPacket = (PacketData) packet;
+//            Map<Integer,List<Integer>> DATAProcessedMap = processedMap.get(PacketConstant.TYPE_DATA);
+//            if (DATAProcessedMap.containsKey(thisPacket.getSrcAddress())) { 
+//                List<Integer> processedList = DATAProcessedMap.get(thisPacket.getSrcAddress());
+//                processedList.add(thisPacket.getUID());
+//                if (processedList.size() >=5) {
+//                    processedList.remove(0);
+//                }
+//            } else {
+//                List<Integer> processedList = new ArrayList<Integer>();
+//                processedList.add(thisPacket.getUID());
+//                DATAProcessedMap.put(thisPacket.getSrcAddress(), processedList);
+//            }
+//        } else 
+            if (packet instanceof PacketUACK) {
             PacketUACK thisPacket = (PacketUACK) packet;
             Map<Integer,List<Integer>> UACKProcessedMap = processedMap.get(PacketConstant.TYPE_UACK);
             if (UACKProcessedMap.containsKey(thisPacket.getSrcAddress())) { 
@@ -294,25 +295,27 @@ public class NetworkLayer {
                 processedList.add(thisPacket.getUID());
                 RREQProcessedMap.put(thisPacket.getSrcAddress(), processedList);
             }
-        } else if (packet instanceof PacketData) {
-            PacketData thisPacket = (PacketData) packet;
-            Map<Integer,List<Integer>> DATAProcessedMap = processedMap.get(PacketConstant.TYPE_DATA);
-            if (DATAProcessedMap.containsKey(thisPacket.getSrcAddress())) { 
-                List<Integer> processedList = DATAProcessedMap.get(thisPacket.getSrcAddress());
-                if (processedList.contains(thisPacket.getUID())) {
-                    return true;
-                } else {
-                    processedList.add(thisPacket.getUID());
-                    if (processedList.size() >=5) {
-                        processedList.remove(0);
-                    }
-                }
-            } else {
-                List<Integer> processedList = new ArrayList<Integer>();
-                processedList.add(thisPacket.getUID());
-                DATAProcessedMap.put(thisPacket.getSrcAddress(), processedList);
-            }
-        } else if (packet instanceof PacketUACK) {
+        } 
+//        else if (packet instanceof PacketData) {
+//            PacketData thisPacket = (PacketData) packet;
+//            Map<Integer,List<Integer>> DATAProcessedMap = processedMap.get(PacketConstant.TYPE_DATA);
+//            if (DATAProcessedMap.containsKey(thisPacket.getSrcAddress())) { 
+//                List<Integer> processedList = DATAProcessedMap.get(thisPacket.getSrcAddress());
+//                if (processedList.contains(thisPacket.getUID())) {
+//                    return true;
+//                } else {
+//                    processedList.add(thisPacket.getUID());
+//                    if (processedList.size() >=5) {
+//                        processedList.remove(0);
+//                    }
+//                }
+//            } else {
+//                List<Integer> processedList = new ArrayList<Integer>();
+//                processedList.add(thisPacket.getUID());
+//                DATAProcessedMap.put(thisPacket.getSrcAddress(), processedList);
+//            }
+//        } 
+        else if (packet instanceof PacketUACK) {
             PacketUACK thisPacket = (PacketUACK) packet;
             Map<Integer,List<Integer>> UACKProcessedMap = processedMap.get(PacketConstant.TYPE_UACK);
             if (UACKProcessedMap.containsKey(thisPacket.getOriginalSrcAddress())) {

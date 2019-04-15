@@ -10,11 +10,17 @@ import layer_transport.TransportLayer;
 import main.Client;
 
 public class ApplicationLayer {
+    private final String INSTRUCTION = "INSTRUCTION: Type /help for support. \n"
+            + "Type /msg [RECEIVER NAME] [MESSAGE] for private message. \n"
+            + "Type @msg [MESSAGE] for group chat message.\n"
+            + "Type /exit for exitting.";
+    
     private Client client;
     private TransportLayer lowerLayer;
     private boolean running;
     private Scanner scanner;
     private Map<Integer,String> usersMap;
+    
     public static void main(String[] args) {
     }
     
@@ -27,6 +33,7 @@ public class ApplicationLayer {
     public void start() {
         User myUser = UserDatabase.getUser(client.getAddress());
         sys("Welcome " + myUser.getUsername());
+        sys(INSTRUCTION);
         startTerminalHandler();
     }
     
@@ -48,10 +55,10 @@ public class ApplicationLayer {
         while (running) {
             if (scanner.hasNextLine()) {
                 String userInput = scanner.nextLine();
-                if (userInput.charAt(0) == '/') {
+                if (userInput.charAt(0) == '/' || userInput.charAt(0) == '@') {
                     handleCommand(userInput);
                 } else {
-                    sys("Invalid command");
+                    sys("Invalid command. Type /help for support.");
                 }
             }
         }
@@ -62,7 +69,7 @@ public class ApplicationLayer {
         if (splits.length > 0) {
             switch(splits[0]) {
             case "/help":
-                sys("/help, /msg, /exit");
+                sys(INSTRUCTION);
                 break;
 
             case "/msg":
@@ -73,11 +80,17 @@ public class ApplicationLayer {
                 sys("Exitting");
                 stopProgram();
                 break;
+            case "@msg":
+                sendGroupMessage(splits);
 
             default:
-                sys("Invalid Command!");
+                sys("Invalid Command! Type /help for support.");
             }
         }
+    }
+    
+    private void sendGroupMessage(String[] userInput) {
+        
     }
     
     private void sendMessage(String[] userInput) {
