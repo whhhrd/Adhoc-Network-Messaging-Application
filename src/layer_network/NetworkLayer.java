@@ -12,7 +12,6 @@ import data.PacketRREP;
 import data.PacketRREQ;
 import data.PacketRRER;
 import data.PacketUACK;
-import database.UserDatabase;
 import layer_link.LinkLayer;
 import layer_transport.TransportLayer;
 import main.Client;
@@ -91,7 +90,7 @@ public class NetworkLayer {
     private boolean makeRouteDiscovery(int desAddress) { 
         int count = 0;
         while (count < 3) {
-            int UID = upperLayer.getNewUID();
+            int UID = upperLayer.getNewUID(desAddress);
             Path emptyPath = new Path(client.getAddress(),desAddress);
             Packet routeDiscoveryPacket = new PacketRREQ(client.getAddress(),desAddress,UID,emptyPath); 
             
@@ -151,7 +150,6 @@ public class NetworkLayer {
     
     private void sendPacketMACK(PacketData packet) {
         int previousNode = pathTable.getPreviousNode(packet.getSrcAddress(),packet.getDesAddress(),client.getAddress());
-        System.out.println("NL - SENDING MACK TO " + UserDatabase.getUser(previousNode).getUsername());
         PacketMACK packetMACK = new PacketMACK(packet.getSrcAddress(),packet.getUID(),client.getAddress(),previousNode);
         putToProcessedMACKMap(packetMACK);
         lowerLayer.receiveFromUpperLayer(packetMACK);
@@ -176,12 +174,10 @@ public class NetworkLayer {
         }
         
         if (isSavedToProcessedMap(packet)) {
-            System.out.println("MACK ALREADY PROCESSED");
             return;
         }
 
         if (packet.getReceiverNode() == client.getAddress()) {
-            System.out.println("RECEIVED MACK");
             List<TimeoutThread> timeoutThreadList = this.timeoutThreadHolderMap.get(packet.getOriginalSrcAddress());
             if (timeoutThreadList != null) {
                 for (int i = 0;i < timeoutThreadList.size();i++) {
@@ -190,7 +186,6 @@ public class NetworkLayer {
                         timeoutThread.stopTimer();
                         timeoutThreadList.remove(i);
                         timeoutThreadHolderMap.put(packet.getOriginalSrcAddress(), timeoutThreadList);
-                        System.out.println("KILL MACK THREAD");
                         break;
                     }
                 }
@@ -407,11 +402,9 @@ public class NetworkLayer {
             while (true) {
                 try {
                     networkLayer.getLowerLayer().receiveFromUpperLayer(packet); 
-                    sleep(15000);
-                    System.out.println("NL - RESENDING PACKET " + packet.getUID() + " | SRC: " + packet.getSrcAddress());
+                    sleep(10000); // Change to 15000
                     count++;
-                    if (count == 2) { // 2
-                        // send RRER
+                    if (count == 3) { 
                         break;
                     }
                 } catch (InterruptedException e) {

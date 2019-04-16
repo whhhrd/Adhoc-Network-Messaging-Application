@@ -1,6 +1,7 @@
 package layer_transport;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -20,17 +21,19 @@ public class TransportLayer {
     private Client client;
     private ApplicationLayer upperLayer;
     private NetworkLayer lowerLayer;
-    private int UID;
-    private TimeoutThread[] timeoutThreadHolder;
-    private PacketData[] savedSendingPacketData;
+    private Integer[] UID;
+    private TimeoutThread[][] timeoutThreadHolder;
+    private PacketData[][] savedSendingPacketData;
     private Map<Integer,List<PacketData>> savedReceivingPacketData;
     private Map<Integer, List<Integer>> processedDataMap;
     
     public TransportLayer(Client client) {
         this.client = client;
-        this.UID = 0;
-        this.timeoutThreadHolder = new TimeoutThread[8];
-        this.savedSendingPacketData = new PacketData[8];
+        this.UID = new Integer[4];
+        Arrays.fill(this.UID, 0);
+        this.timeoutThreadHolder = new TimeoutThread[4][8];
+        
+        this.savedSendingPacketData = new PacketData[4][8];
         this.savedReceivingPacketData = new HashMap<Integer,List<PacketData>>();
         this.processedDataMap = new HashMap<Integer,List<Integer>>();
     }
@@ -62,23 +65,20 @@ public class TransportLayer {
             lowerLayer.receiveFromUpperLayer(UACKPacket);
         } else if (packet instanceof PacketUACK) {
             PacketUACK thisPacket = (PacketUACK) packet;
-            TimeoutThread timeoutThread = this.timeoutThreadHolder[thisPacket.getUID()];
+            TimeoutThread timeoutThread = this.timeoutThreadHolder[thisPacket.getSrcAddress()][thisPacket.getUID()];
             if (timeoutThread != null) {
                 PacketData sentPacketData = timeoutThread.getPacket();
                 timeoutThread.stopTimer();
-                this.savedSendingPacketData[sentPacketData.getUID()] = null;
+                this.savedSendingPacketData[sentPacketData.getDesAddress()][sentPacketData.getUID()] = null;
                 if (sentPacketData.isFinPacket()) {
                     upperLayer.receiveFromLowerLayer("Message to " + UserDatabase.getUser(sentPacketData.getDesAddress()).getUsername() +
                             " sent successfully", UserDatabase.SYSTEM_ID);
                 } else {
                     int nextUID = getNextUID(sentPacketData.getUID());
-                    PacketData nextPacketData = this.savedSendingPacketData[nextUID];
-                    if (nextPacketData == null) {
-                        System.out.println("NEXT PACKET DATA IS NULL WITH UID: " + nextUID);
-                    }
+                    PacketData nextPacketData = this.savedSendingPacketData[sentPacketData.getDesAddress()][nextUID];
                     TimeoutThread nextTimeoutThread = new TimeoutThread(this,nextPacketData);
-                    timeoutThreadHolder[nextPacketData.getUID()] = nextTimeoutThread;
-                    updateUID();
+                    timeoutThreadHolder[nextPacketData.getDesAddress()][nextPacketData.getUID()] = nextTimeoutThread;
+                    updateUID(nextPacketData.getDesAddress());
                     nextTimeoutThread.start();
                 }
             }
@@ -89,21 +89,24 @@ public class TransportLayer {
         if (receiverAddress == UserDatabase.GROUP_CHAT) {
             sendGroupChatMessage(textMessage);
         } else {
-            if (lowerLayer.candSendTo(receiverAddress)) {
-                updateUID();
-                saveMessageToSendingArray(textMessage,receiverAddress); //
-                PacketData packet = this.savedSendingPacketData[UID]; //
-                TimeoutThread timeoutThread = new TimeoutThread(this,packet);
-                timeoutThreadHolder[packet.getUID()] = timeoutThread;
-                if (timeoutThread != null) {
-                    timeoutThread.start();
-                }
-            } else {
-                upperLayer.receiveFromLowerLayer( "Cannot send the message to " 
-            + UserDatabase.getUser(receiverAddress).getUsername(),UserDatabase.SYSTEM_ID);
-            }
+            sendPrivateMessage(textMessage, receiverAddress);
         }
-        
+    }
+    
+    private void sendPrivateMessage(String textMessage, int receiverAddress) {
+        if (lowerLayer.candSendTo(receiverAddress)) {
+            updateUID(receiverAddress);
+            saveMessageToSendingArray(textMessage,receiverAddress); 
+            PacketData packet = this.savedSendingPacketData[receiverAddress][UID[receiverAddress]];
+            TimeoutThread timeoutThread = new TimeoutThread(this,packet);
+            timeoutThreadHolder[packet.getDesAddress()][packet.getUID()] = timeoutThread;
+            if (timeoutThread != null) {
+                timeoutThread.start();
+            }
+        } else {
+            upperLayer.receiveFromLowerLayer( "Cannot send the message to " 
+        + UserDatabase.getUser(receiverAddress).getUsername(),UserDatabase.SYSTEM_ID);
+        }
     }
     
     public int getNextUID(int currentUID) {
@@ -113,14 +116,14 @@ public class TransportLayer {
         return currentUID+1;
     }
     
-    public int getNewUID() {
-        updateUID();
-        return this.UID;
+    public int getNewUID(int desAddress) {
+        updateUID(desAddress);
+        return this.UID[desAddress];
     }
     
     private void sendGroupChatMessage(String message) {
         for (Integer friendId: UserDatabase.getFriendIdsListOf(client.getAddress())) {
-            this.receiveFromUpperLayer(message,friendId);
+            new GroupChatThread(this,message,friendId).start();
         }
     }
     
@@ -158,40 +161,61 @@ public class TransportLayer {
     }
     
     private void saveMessageToSendingArray(String textMessage, int receiverAddress) {
-        int nextUID = UID;
+        int nextUID = UID[receiverAddress];
         while (textMessage.length() > 14) {
             String textPart = textMessage.substring(0, 14);
             PacketData packet = new PacketData(client.getAddress(),receiverAddress,nextUID,textPart,IS_NOT_FIN);
-            this.savedSendingPacketData[nextUID] = packet;
+            this.savedSendingPacketData[receiverAddress][nextUID] = packet;
             nextUID = getNextUID(nextUID);
             textMessage = textMessage.substring(14);
         }
         PacketData finalPacket = new PacketData(client.getAddress(),receiverAddress,nextUID,textMessage,IS_FIN);
-        this.savedSendingPacketData[nextUID] = finalPacket;
+        this.savedSendingPacketData[receiverAddress][nextUID] = finalPacket;
     }
     
-    private TimeoutThread[] getTimeoutThreadHolder() {
-        return this.timeoutThreadHolder;
+    private TimeoutThread[] getTimeoutThreadHolder(int receiverAddress) {
+        return this.timeoutThreadHolder[receiverAddress];
     }
     
-    private void updateUID() {
-        if (this.UID == 7) {
-            this.UID = 0;
+    private void updateUID(int desAddress) {
+        if (this.UID[desAddress] == 7) {
+            this.UID[desAddress] = 0;
         } else {
-            this.UID++;
+            this.UID[desAddress] = this.UID[desAddress] + 1;
         }
     }
     
-    private int getUID() {
-        return this.UID;
+    private int getUID(int receiverAddress) {
+        return this.UID[receiverAddress];
     }
     
-    private NetworkLayer getLowerLayer() {
-        return this.lowerLayer;
-    }
-    
-    private ApplicationLayer getUpperLayer() {
-        return this.upperLayer;
+    private class GroupChatThread extends Thread {
+        private String textMessage;
+        private int receiverAddress;
+        private TransportLayer transportLayer;
+        
+        private GroupChatThread(TransportLayer transportLayer, String textMessage, int receiverAddress) {
+            this.transportLayer = transportLayer;
+            this.textMessage = textMessage;
+            this.receiverAddress = receiverAddress;
+        }
+        
+        @Override
+        public void run() {
+            if (lowerLayer.candSendTo(receiverAddress)) {
+                updateUID(receiverAddress);
+                saveMessageToSendingArray(textMessage,receiverAddress); 
+                PacketData packet = savedSendingPacketData[receiverAddress][UID[receiverAddress]];
+                TimeoutThread timeoutThread = new TimeoutThread(transportLayer,packet);
+                timeoutThreadHolder[packet.getDesAddress()][packet.getUID()] = timeoutThread;
+                if (timeoutThread != null) {
+                    timeoutThread.start();
+                }
+            } else {
+                upperLayer.receiveFromLowerLayer( "Cannot send the message to " 
+            + UserDatabase.getUser(receiverAddress).getUsername(),UserDatabase.SYSTEM_ID);
+            }
+        }
     }
     
     private class TimeoutThread extends Thread {
@@ -217,17 +241,17 @@ public class TransportLayer {
             int count = 0;
             while (true) {
                 try {
-                    if (transportLayer.getUID() == packet.getUID()) {
-                        transportLayer.getLowerLayer().receiveFromUpperLayer(packet);
+                    if (transportLayer.getUID(packet.getDesAddress()) == packet.getUID()) {
+                        lowerLayer.receiveFromUpperLayer(packet);
                     } else {
                         break;
                     }
                     sleep(30000);
                     count++;
                     if (count == 3) {
-                        transportLayer.getUpperLayer().receiveFromLowerLayer( "Cannot send the message to " 
+                        upperLayer.receiveFromLowerLayer( "Cannot send the message to " 
                                 + UserDatabase.getUser(packet.getDesAddress()).getUsername(),UserDatabase.SYSTEM_ID);
-                        transportLayer.getTimeoutThreadHolder()[packet.getUID()] = null;
+                        transportLayer.getTimeoutThreadHolder(packet.getDesAddress())[packet.getUID()] = null;
                         break;
                     }
                 } catch (InterruptedException e) {
