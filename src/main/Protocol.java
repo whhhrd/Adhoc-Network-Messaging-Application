@@ -15,7 +15,7 @@ public class Protocol {
     // The port to connect to. 8954 for the simulation server.
     private static int SERVER_PORT = 8954;
     // The frequency to use.
-    private static int frequency = 111;
+    private static int frequency = 9111;
     private Client client;
     
     private ApplicationLayer applicationLayer;

@@ -274,7 +274,7 @@ public class NetworkLayer {
                 srcAndUID[1] = thisPacket.getOriginalUID();
                 if (processedMACKMap.get(thisPacket.getSenderNode()).contains(srcAndUID)) {
                     return true;
-                }
+                } 
             }
             putToProcessedMACKMap(thisPacket);
         } else if (packet instanceof PacketRRER) {
@@ -414,4 +414,7 @@ public class NetworkLayer {
         }
     }
 
+//    public static void main(String[] args) {
+//        List<Integer> 
+//    }
 }
