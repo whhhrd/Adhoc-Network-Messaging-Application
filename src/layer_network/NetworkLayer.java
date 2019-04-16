@@ -402,8 +402,8 @@ public class NetworkLayer {
             while (true) {
                 try {
                     networkLayer.getLowerLayer().receiveFromUpperLayer(packet); 
-                    sleep(10000); 
                     count++;
+                    sleep(10000); 
                     if (count == 3) { 
                         break;
                     }

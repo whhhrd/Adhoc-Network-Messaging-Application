@@ -68,7 +68,7 @@ public class TransportLayer {
         } else if (packet instanceof PacketUACK) {
             PacketUACK thisPacket = (PacketUACK) packet;
             if (processedUACKMap.containsKey(thisPacket.getSrcAddress())
-                    && processedUACKMap.get(thisPacket.getSrcAddress()).contains(thisPacket.getUID())) {
+                    && processedUACKMap.get(thisPacket.getSrcAddress()).contains(thisPacket)) {
                 return;
             } else {
                 putToProcessedUACKMap(thisPacket);
@@ -102,19 +102,7 @@ public class TransportLayer {
     }
     
     private void sendPrivateMessage(String textMessage, int receiverAddress) {
-        if (lowerLayer.candSendTo(receiverAddress)) {
-            updateUID(receiverAddress);
-            saveMessageToSendingArray(textMessage,receiverAddress); 
-            PacketData packet = this.savedSendingPacketData[receiverAddress][UID[receiverAddress]];
-            TimeoutThread timeoutThread = new TimeoutThread(this,packet);
-            timeoutThreadHolder[packet.getDesAddress()][packet.getUID()] = timeoutThread;
-            if (timeoutThread != null) {
-                timeoutThread.start();
-            }
-        } else {
-            upperLayer.receiveFromLowerLayer( "Cannot send the message to " 
-        + UserDatabase.getUser(receiverAddress).getUsername(),UserDatabase.SYSTEM_ID);
-        }
+      new SingleMessageThread(this,textMessage,receiverAddress).start();
     }
     
     public int getNextUID(int currentUID) {
@@ -131,7 +119,7 @@ public class TransportLayer {
     
     private void sendGroupChatMessage(String message) {
         for (Integer friendId: UserDatabase.getFriendIdsListOf(client.getAddress())) {
-            new GroupChatThread(this,message,friendId).start();
+            this.sendPrivateMessage(message, friendId);
         }
     }
     
@@ -158,14 +146,17 @@ public class TransportLayer {
     }
     
     private void putToProcessedUACKMap(PacketUACK packet) {
-        List<PacketUACK> packetUACKList;
+        List<PacketUACK> processedList;
         if (this.processedUACKMap.containsKey(packet.getSrcAddress())) {
-            packetUACKList = this.processedUACKMap.get(packet.getSrcAddress());
+            processedList = this.processedUACKMap.get(packet.getSrcAddress());
         } else {
-            packetUACKList = new ArrayList<PacketUACK>();
+            processedList = new ArrayList<PacketUACK>();
         }
-        packetUACKList.add(packet);
-        this.processedUACKMap.put(packet.getSrcAddress(), packetUACKList);
+        processedList.add(packet);
+        if (processedList.size() >= 3) {
+            processedList.remove(0);
+        }
+        this.processedUACKMap.put(packet.getSrcAddress(), processedList);
     }
     
     private void saveToReceivingPacketData(PacketData packet) {
@@ -208,12 +199,12 @@ public class TransportLayer {
         return this.UID[receiverAddress];
     }
     
-    private class GroupChatThread extends Thread {
+    private class SingleMessageThread extends Thread {
         private String textMessage;
         private int receiverAddress;
         private TransportLayer transportLayer;
         
-        private GroupChatThread(TransportLayer transportLayer, String textMessage, int receiverAddress) {
+        private SingleMessageThread(TransportLayer transportLayer, String textMessage, int receiverAddress) {
             this.transportLayer = transportLayer;
             this.textMessage = textMessage;
             this.receiverAddress = receiverAddress;
