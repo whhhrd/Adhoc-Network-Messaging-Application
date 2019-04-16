@@ -3,20 +3,30 @@ package data;
 public class PacketMACK implements Packet {
     private int originalSrcAddress;
     private int originalUID;
-    private int nextNode;
+    private int receiverNode;
+    private int senderNode;
     
-    public PacketMACK(int originalSrcAddress, int originalUID, int nextNode) {
-        this.nextNode = nextNode;
+    public PacketMACK(int originalSrcAddress, int originalUID, int senderNode ,int receiverNode) {
+        this.receiverNode = receiverNode;
         this.originalSrcAddress = originalSrcAddress;
         this.originalUID = originalUID;
+        this.senderNode = senderNode;
     }
     
-    public void setNextNode(int nextNode) {
-        this.nextNode = nextNode;
+    public void setSenderNode(int senderNode) {
+        this.senderNode = senderNode;
     }
     
-    public int getNextNode() {
-        return this.nextNode;
+    public void setNextNode(int receiverNode) {
+        this.receiverNode = receiverNode;
+    }
+    
+    public int getSenderNode() {
+        return this.senderNode;
+    }
+    
+    public int getReceiverNode() {
+        return this.receiverNode;
     }
     
     public int getOriginalSrcAddress() {

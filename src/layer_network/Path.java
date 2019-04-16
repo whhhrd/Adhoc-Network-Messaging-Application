@@ -19,6 +19,15 @@ public class Path {
         path.add(address);
     }
     
+    public List<Integer> getNextNodes(int currentNode) {
+        int currentIndex = path.indexOf(currentNode);
+        List<Integer> nextNodes = new ArrayList<Integer>();
+        for (int i = currentIndex + 1; i < path.size();i++) {
+            nextNodes.add(path.get(i));
+        }
+        return nextNodes;
+    }
+    
     public int getNextNode(int currentNode) {
         int currentIndex = path.indexOf(currentNode);
         return path.get(currentIndex + 1);

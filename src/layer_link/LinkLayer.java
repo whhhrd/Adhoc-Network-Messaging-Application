@@ -128,19 +128,12 @@ public class LinkLayer {
             }
             break;
         case PacketConstant.BITSTRING_RERR: // RRER
+            int RRERUID = turnBitStringToNumber(bitString.substring(3,6));
             int RRERSrcAddress = turnBitStringToNumber(bitString.substring(6,8));
             int RRERDesAddress = turnBitStringToNumber(bitString.substring(8,10));
-            int RRERUID = turnBitStringToNumber(bitString.substring(3,6));
-            Path RRERPath = new Path(RRERSrcAddress,RRERDesAddress);
-            for (int i = 10;i < 16;i += 2) {
-                int nextNode= turnBitStringToNumber(bitString.substring(i,i+2));
-                if (nextNode != RRERSrcAddress) {
-                    RRERPath.addNode(nextNode);
-                } else {
-                    break;
-                }
-            }
-            return new PacketRRER(RRERSrcAddress,RRERDesAddress,RRERUID,RRERPath);
+            int RRERBreakNode = turnBitStringToNumber(bitString.substring(10,12));
+            int RRERReceivedNode = turnBitStringToNumber(bitString.substring(12,14));
+            return new PacketRRER(RRERSrcAddress,RRERDesAddress,RRERUID,RRERBreakNode,RRERReceivedNode);
         case PacketConstant.BITSTRING_UACK: // UACK
             int UACKOriginalUID = turnBitStringToNumber(bitString.substring(3,6));
             int UACKOriginalSrcAddress = turnBitStringToNumber(bitString.substring(6,8));
@@ -150,8 +143,9 @@ public class LinkLayer {
         case PacketConstant.BITSTRING_MACK: // MACK
             int MACKOriginalUID = turnBitStringToNumber(bitString.substring(3,6));
             int MACKOriginalSrcAddress = turnBitStringToNumber(bitString.substring(6,8));
-            int receiverAddress = turnBitStringToNumber(bitString.substring(8,10));
-            return new PacketMACK(MACKOriginalSrcAddress,MACKOriginalUID,receiverAddress);
+            int senderAddress = turnBitStringToNumber(bitString.substring(8,10));
+            int receiverAddress = turnBitStringToNumber(bitString.substring(10,12));
+            return new PacketMACK(MACKOriginalSrcAddress,MACKOriginalUID,senderAddress,receiverAddress);
         }
         return null;
     }
@@ -225,8 +219,9 @@ public class LinkLayer {
         bitString += PacketConstant.BITSTRING_MACK;
         bitString += turnNumberToBitString(packet.getOriginalUID(),3);
         bitString += turnNumberToBitString(packet.getOriginalSrcAddress(),2);
-        bitString += turnNumberToBitString(packet.getNextNode(),2);
-        bitString += "000000";
+        bitString += turnNumberToBitString(packet.getSenderNode(),2);
+        bitString += turnNumberToBitString(packet.getReceiverNode(),2);
+        bitString += "0000";
         byte[] messageData = new byte[2];
         messageData[0] = (byte) Integer.parseInt(bitString.substring(0, 8), 2);
         messageData[1] = (byte) Integer.parseInt(bitString.substring(8,16), 2); 
@@ -257,14 +252,9 @@ public class LinkLayer {
         bitString += turnNumberToBitString(packet.getUID(),3);
         bitString += turnNumberToBitString(packet.getSrcAddress(),2);
         bitString += turnNumberToBitString(packet.getDesAddress(),2);
-        Path path = packet.getPath();
-        for (int i = 1;i < 4;i++) {
-            if (path.getPath().size() > i) {
-                bitString += turnNumberToBitString(path.getPath().get(i),2);
-            } else {
-                bitString += turnNumberToBitString(packet.getSrcAddress(),2);
-            }
-        }
+        bitString += turnNumberToBitString(packet.getBreakNode(),2);
+        bitString += turnNumberToBitString(packet.getReceivingNode(),2);
+        bitString += "00";
         byte[] messageData = new byte[2];
         messageData[0] = (byte) Integer.parseInt(bitString.substring(0, 8), 2);
         messageData[1] = (byte) Integer.parseInt(bitString.substring(8,16), 2);

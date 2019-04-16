@@ -1,6 +1,8 @@
 package database;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 public class UserDatabase {
@@ -9,6 +11,7 @@ public class UserDatabase {
     public final static int IVO_ID = 1;
     public final static int RAOUL_ID = 2;
     public final static int ZIWEI_ID = 3;
+    public final static int GROUP_CHAT = 4;
     
     public final static String DUC_USERNAME = "DUC";
     public final static String RAOUL_USERNAME = "RAOUL";
@@ -27,6 +30,17 @@ public class UserDatabase {
             return new User(ZIWEI_ID,ZIWEI_USERNAME);
         }
         return null;
+    }
+    
+    public static List<Integer> getFriendIdsListOf(int myId) {
+        List<Integer> friendsId = new ArrayList<Integer>();
+        for (int i = 0;i<4;i++) {
+            if (i == myId) {
+                continue;
+            }
+            friendsId.add(i);
+        }
+        return friendsId;
     }
     
     public static Map<Integer, String> getUsersMap() {

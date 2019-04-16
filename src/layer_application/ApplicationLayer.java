@@ -14,6 +14,7 @@ public class ApplicationLayer {
             + "Type /msg [RECEIVER NAME] [MESSAGE] for private message. \n"
             + "Type @msg [MESSAGE] for group chat message.\n"
             + "Type /exit for exitting.";
+    private final String GROUP_CHAT_KEY = "@@";
     
     private Client client;
     private TransportLayer lowerLayer;
@@ -45,8 +46,15 @@ public class ApplicationLayer {
         if (address == UserDatabase.SYSTEM_ID) {
             sys(message);
         } else {
-            User sender = UserDatabase.getUser(address);
-            print(sender.getUsername() + ": " + message);
+            if (message.substring(0, 2).equals(GROUP_CHAT_KEY)) {
+                message = message.substring(2);
+                User sender = UserDatabase.getUser(address);
+                print("GROUP - " + sender.getUsername() +": " + message);
+            } else {
+                User sender = UserDatabase.getUser(address);
+                print(sender.getUsername() + ": " + message);
+            }
+            
         }
     }
     
@@ -80,17 +88,29 @@ public class ApplicationLayer {
                 sys("Exitting");
                 stopProgram();
                 break;
+                
             case "@msg":
                 sendGroupMessage(splits);
-
+                break;
+                
             default:
-                sys("Invalid Command! Type /help for support.");
+                sys("First part: " + splits[0]);
+                sys("Command: " + String.join(" ", userInput));
+                sys("Invalid Command! Type /help for support. 1");
+                break;
             }
         }
     }
     
     private void sendGroupMessage(String[] userInput) {
-        
+        if (userInput.length <= 1) {
+            sys("Please input correct command. Type /help for support.");
+            return;
+        }
+        String[] messageParts = Arrays.copyOfRange(userInput, 1, userInput.length);
+        String message = GROUP_CHAT_KEY + String.join(" ", messageParts);
+        sys("Sending group message...");
+        lowerLayer.receiveFromUpperLayer(message,UserDatabase.GROUP_CHAT);
     }
     
     private void sendMessage(String[] userInput) {

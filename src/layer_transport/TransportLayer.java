@@ -86,19 +86,24 @@ public class TransportLayer {
     }
     
     public synchronized void receiveFromUpperLayer(String textMessage, int receiverAddress) {
-        if (lowerLayer.candSendTo(receiverAddress)) {
-            updateUID();
-            saveMessageToSendingArray(textMessage,receiverAddress); //
-            PacketData packet = this.savedSendingPacketData[UID]; //
-            TimeoutThread timeoutThread = new TimeoutThread(this,packet);
-            timeoutThreadHolder[packet.getUID()] = timeoutThread;
-            if (timeoutThread != null) {
-                timeoutThread.start();
-            }
+        if (receiverAddress == UserDatabase.GROUP_CHAT) {
+            sendGroupChatMessage(textMessage);
         } else {
-            upperLayer.receiveFromLowerLayer( "Cannot send the message to " 
-        + UserDatabase.getUser(receiverAddress).getUsername(),UserDatabase.SYSTEM_ID);
+            if (lowerLayer.candSendTo(receiverAddress)) {
+                updateUID();
+                saveMessageToSendingArray(textMessage,receiverAddress); //
+                PacketData packet = this.savedSendingPacketData[UID]; //
+                TimeoutThread timeoutThread = new TimeoutThread(this,packet);
+                timeoutThreadHolder[packet.getUID()] = timeoutThread;
+                if (timeoutThread != null) {
+                    timeoutThread.start();
+                }
+            } else {
+                upperLayer.receiveFromLowerLayer( "Cannot send the message to " 
+            + UserDatabase.getUser(receiverAddress).getUsername(),UserDatabase.SYSTEM_ID);
+            }
         }
+        
     }
     
     public int getNextUID(int currentUID) {
@@ -111,6 +116,12 @@ public class TransportLayer {
     public int getNewUID() {
         updateUID();
         return this.UID;
+    }
+    
+    private void sendGroupChatMessage(String message) {
+        for (Integer friendId: UserDatabase.getFriendIdsListOf(client.getAddress())) {
+            this.receiveFromUpperLayer(message,friendId);
+        }
     }
     
     private String combineReceivedPacketDataToTextMessage(List<PacketData> packetDataList) {

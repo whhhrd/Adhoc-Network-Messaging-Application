@@ -21,6 +21,30 @@ public class PathTable {
         return false;
     }
     
+    public void updateBreakNode(int breakNode, int desAddress) {
+        List<Integer> missingNodes = new ArrayList<Integer>();
+        for (Path path: pathList) {
+            if (path.getDesAddress() == desAddress) {
+                for (Integer missingNode: path.getNextNodes(breakNode)) {
+                    missingNodes.add(missingNode);
+                }
+            }
+        }
+        
+        for (int missingNode: missingNodes) {
+            removeMissingNode(missingNode);
+        }
+    }
+    
+    private void removeMissingNode(int missingNode) {
+        for (Path path: pathList) {
+            if (path.getDesAddress() == missingNode) {
+                pathList.remove(path);
+                break;
+            }
+        }
+    }
+
     public int getNextNode(int srcAddress, int desAddress, int currentNode) {
         int result = -1;
         for (Path path: pathList) {
