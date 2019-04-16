@@ -156,7 +156,7 @@ public class NetworkLayer {
     }
     
     private void handleReceivedPacketUACK(PacketUACK packet) {
-        if (isSavedToProcessedMap(packet)) {
+        if (packet.getOriginalSrcAddress() == client.getAddress() && isSavedToProcessedMap(packet)) {
             return;
         }
         
@@ -402,7 +402,7 @@ public class NetworkLayer {
             while (true) {
                 try {
                     networkLayer.getLowerLayer().receiveFromUpperLayer(packet); 
-                    sleep(10000); // Change to 15000
+                    sleep(10000); 
                     count++;
                     if (count == 3) { 
                         break;

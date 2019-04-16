@@ -13,9 +13,9 @@ import database.UserDatabase;
 
 public class Client {
 //    private static int MY_CLIENT_ADDRESS = UserDatabase.DUC_ID; 
-//    private static int MY_CLIENT_ADDRESS = UserDatabase.IVO_ID; 
+    private static int MY_CLIENT_ADDRESS = UserDatabase.IVO_ID; 
 //    private static int MY_CLIENT_ADDRESS = UserDatabase.RAOUL_ID; 
-    private static int MY_CLIENT_ADDRESS = UserDatabase.ZIWEI_ID; 
+//    private static int MY_CLIENT_ADDRESS = UserDatabase.ZIWEI_ID; 
 
     private BlockingQueue<Message> receivedQueue;
     private BlockingQueue<Message> sendingQueue;

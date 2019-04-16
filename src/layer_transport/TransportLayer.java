@@ -26,6 +26,7 @@ public class TransportLayer {
     private PacketData[][] savedSendingPacketData;
     private Map<Integer,List<PacketData>> savedReceivingPacketData;
     private Map<Integer, List<Integer>> processedDataMap;
+    private Map<Integer,List<PacketUACK>> processedUACKMap;
     
     public TransportLayer(Client client) {
         this.client = client;
@@ -35,6 +36,7 @@ public class TransportLayer {
         
         this.savedSendingPacketData = new PacketData[4][8];
         this.savedReceivingPacketData = new HashMap<Integer,List<PacketData>>();
+        this.processedUACKMap = new HashMap<Integer,List<PacketUACK>>();
         this.processedDataMap = new HashMap<Integer,List<Integer>>();
     }
     
@@ -65,6 +67,12 @@ public class TransportLayer {
             lowerLayer.receiveFromUpperLayer(UACKPacket);
         } else if (packet instanceof PacketUACK) {
             PacketUACK thisPacket = (PacketUACK) packet;
+            if (processedUACKMap.containsKey(thisPacket.getSrcAddress())
+                    && processedUACKMap.get(thisPacket.getSrcAddress()).contains(thisPacket.getUID())) {
+                return;
+            } else {
+                putToProcessedUACKMap(thisPacket);
+            }
             TimeoutThread timeoutThread = this.timeoutThreadHolder[thisPacket.getSrcAddress()][thisPacket.getUID()];
             if (timeoutThread != null) {
                 PacketData sentPacketData = timeoutThread.getPacket();
@@ -147,6 +155,17 @@ public class TransportLayer {
             processedList.remove(0);
         }
         processedDataMap.put(packet.getSrcAddress(), processedList);
+    }
+    
+    private void putToProcessedUACKMap(PacketUACK packet) {
+        List<PacketUACK> packetUACKList;
+        if (this.processedUACKMap.containsKey(packet.getSrcAddress())) {
+            packetUACKList = this.processedUACKMap.get(packet.getSrcAddress());
+        } else {
+            packetUACKList = new ArrayList<PacketUACK>();
+        }
+        packetUACKList.add(packet);
+        this.processedUACKMap.put(packet.getSrcAddress(), packetUACKList);
     }
     
     private void saveToReceivingPacketData(PacketData packet) {
@@ -246,7 +265,7 @@ public class TransportLayer {
                     } else {
                         break;
                     }
-                    sleep(30000);
+                    sleep(20000);
                     count++;
                     if (count == 3) {
                         upperLayer.receiveFromLowerLayer( "Cannot send the message to " 
